@@ -28,6 +28,8 @@ from trajectory_tracing import TrajectoryTracer, tracing_context
 
 logger = logging.getLogger(__name__)
 _CALCULATOR_EXPR_RE = re.compile(r"^[0-9\.\+\-\*\/%\(\)\s]+$")
+OPENAI_COMPATIBLE_PROVIDERS = {"openai", "huggingface", "hf"}
+HF_ROUTER_BASE_URL = "https://router.huggingface.co/v1"
 
 
 class PlanningState(TypedDict, total=False):
@@ -135,26 +137,39 @@ class LangGraphPlanningWorkflow:
         )
 
     def _resolve_model(self) -> str:
-        if self.provider == "openai":
-            return os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        if self.provider in OPENAI_COMPATIBLE_PROVIDERS:
+            default_model = (
+                "moonshotai/Kimi-K2.5"
+                if self.provider in {"huggingface", "hf"}
+                else "gpt-4.1-mini"
+            )
+            return os.getenv("OPENAI_MODEL", default_model)
         if self.provider == "anthropic":
             return os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
         raise ValueError(
-            f"Unsupported LLM_PROVIDER={self.provider!r}. Use 'openai' or 'anthropic'."
+            f"Unsupported LLM_PROVIDER={self.provider!r}. "
+            "Use 'openai', 'huggingface'/'hf', or 'anthropic'."
         )
 
     def _build_llm(self):
-        if self.provider == "openai":
+        if self.provider in OPENAI_COMPATIBLE_PROVIDERS:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "OPENAI_API_KEY environment variable required when LLM_PROVIDER=openai."
+                    "OPENAI_API_KEY environment variable required when "
+                    "LLM_PROVIDER is openai-compatible."
                 )
-            return ChatOpenAI(
-                model=self.model,
-                api_key=api_key,
-                temperature=0,
-            )
+            openai_kwargs = {
+                "model": self.model,
+                "api_key": api_key,
+                "temperature": 0,
+            }
+            base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+            if not base_url and self.provider in {"huggingface", "hf"}:
+                base_url = HF_ROUTER_BASE_URL
+            if base_url:
+                openai_kwargs["base_url"] = base_url
+            return ChatOpenAI(**openai_kwargs)
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:

@@ -15,7 +15,7 @@ This codebase now diverges substantially from the original.
 
 ## What changed (major)
 
-- OpenAI client integration with **OpenAI as default provider**
+- OpenAI-compatible client integration (`openai` / `huggingface`/`hf`)
 - Anthropic kept as optional provider
 - Added **LangGraph implementation** in parallel with Microsoft Agent Framework flow
 - Added **trajectory tracing** (JSONL + run summary) for offline analysis and training datasets
@@ -88,7 +88,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Minimal `.env` (OpenAI default):
+Minimal `.env` (OpenAI provider):
 
 ```dotenv
 LLM_PROVIDER=openai
@@ -98,6 +98,33 @@ SERPER_API_KEY=
 TRACE_TRAJECTORY=true
 TRACE_DIR=trajectories
 ```
+
+Hugging Face Inference Router mode:
+
+```dotenv
+LLM_PROVIDER=huggingface
+OPENAI_API_KEY=hf_...
+OPENAI_BASE_URL=https://router.huggingface.co/v1
+OPENAI_MODEL=moonshotai/Kimi-K2.5
+SERPER_API_KEY=
+TRACE_TRAJECTORY=true
+TRACE_DIR=trajectories
+```
+
+Validated command (LangGraph runtime):
+
+```bash
+LLM_PROVIDER=huggingface \
+OPENAI_API_KEY=hf_... \
+OPENAI_BASE_URL=https://router.huggingface.co/v1 \
+OPENAI_MODEL=moonshotai/Kimi-K2.5 \
+SERPER_API_KEY= \
+python main_langgraph.py "AI planning market brief" --provider huggingface --model moonshotai/Kimi-K2.5
+```
+
+Note:
+- `main_langgraph.py` has been validated with Hugging Face router.
+- `main.py` (Agent Framework runtime) may be incompatible with some router payload validators.
 
 Optional Anthropic mode:
 
@@ -122,6 +149,7 @@ LangGraph runtime:
 
 ```bash
 python main_langgraph.py "AI agent market size 2024-2026" --provider openai --model gpt-4.1-mini
+python main_langgraph.py "AI agent market size 2024-2026" --provider huggingface --model moonshotai/Kimi-K2.5
 ```
 
 Disable tracing:
@@ -183,6 +211,7 @@ Quality guidance:
 
 - LangGraph implementation: working
 - OpenAI default provider: working
+- Hugging Face router provider: working (LangGraph runtime)
 - Anthropic optional provider: supported
 - Tracing pipeline: working
 - Notebook path: available for interactive exploration

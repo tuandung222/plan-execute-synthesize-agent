@@ -26,17 +26,40 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+OPENAI_COMPATIBLE_PROVIDERS = {"openai", "huggingface", "hf"}
+HF_ROUTER_BASE_URL = "https://router.huggingface.co/v1"
+
+
+def normalize_provider(provider: str) -> str:
+    provider = provider.strip().lower()
+    if provider == "hf":
+        return "huggingface"
+    return provider
+
+
+def resolve_model_from_env(provider: str) -> str:
+    provider = normalize_provider(provider)
+    if provider == "anthropic":
+        return os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
+    default_model = "moonshotai/Kimi-K2.5" if provider == "huggingface" else "gpt-4.1-mini"
+    return os.getenv("OPENAI_MODEL", default_model)
+
+
+def apply_provider_defaults(provider: str) -> None:
+    provider = normalize_provider(provider)
+    if provider == "huggingface" and not os.getenv("OPENAI_BASE_URL", "").strip():
+        os.environ["OPENAI_BASE_URL"] = HF_ROUTER_BASE_URL
 
 
 def validate_environment() -> tuple[bool, list[str]]:
-    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+    provider = normalize_provider(os.getenv("LLM_PROVIDER", "openai"))
     required_vars: dict[str, str] = {}
-    if provider == "openai":
+    if provider in OPENAI_COMPATIBLE_PROVIDERS:
         required_vars["OPENAI_API_KEY"] = "OpenAI API key for LLM calls"
     elif provider == "anthropic":
         required_vars["ANTHROPIC_API_KEY"] = "Anthropic API key for LLM calls"
     else:
-        required_vars["LLM_PROVIDER"] = "Must be either 'openai' or 'anthropic'"
+        required_vars["LLM_PROVIDER"] = "Must be one of: openai, huggingface/hf, anthropic"
 
     missing = []
     for var, description in required_vars.items():
@@ -56,12 +79,9 @@ def save_report(content: str, output_file: str) -> None:
 
 async def async_main(args: argparse.Namespace) -> None:
     start_time = datetime.now()
-    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
-    model = (
-        os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
-        if provider == "anthropic"
-        else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-    )
+    provider = normalize_provider(os.getenv("LLM_PROVIDER", "openai"))
+    apply_provider_defaults(provider)
+    model = resolve_model_from_env(provider)
 
     tracer = TrajectoryTracer(
         topic=args.topic,
@@ -120,7 +140,7 @@ def main() -> None:
         "--provider",
         type=str,
         default=None,
-        choices=["openai", "anthropic"],
+        choices=["openai", "huggingface", "hf", "anthropic"],
         help="Override LLM provider",
     )
     parser.add_argument(
@@ -137,11 +157,13 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.provider:
-        os.environ["LLM_PROVIDER"] = args.provider
-        logger.info("Using provider: %s", args.provider)
+        normalized_provider = normalize_provider(args.provider)
+        os.environ["LLM_PROVIDER"] = normalized_provider
+        logger.info("Using provider: %s", normalized_provider)
+        apply_provider_defaults(normalized_provider)
 
     if args.model:
-        provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+        provider = normalize_provider(os.getenv("LLM_PROVIDER", "openai"))
         if provider == "anthropic":
             os.environ["ANTHROPIC_MODEL"] = args.model
         else:
@@ -155,12 +177,9 @@ def main() -> None:
             logger.error("   - %s", item)
         sys.exit(1)
 
-    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
-    model = (
-        os.getenv("ANTHROPIC_MODEL", "claude-opus-4-6")
-        if provider == "anthropic"
-        else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-    )
+    provider = normalize_provider(os.getenv("LLM_PROVIDER", "openai"))
+    apply_provider_defaults(provider)
+    model = resolve_model_from_env(provider)
     print("\n" + "=" * 60)
     print("🎯 Planning Pattern Assistant (LangGraph)")
     print("=" * 60)
@@ -175,4 +194,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
